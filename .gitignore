@@ -1,0 +1,22 @@
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Python bytecode & caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+
+# Local secrets, interview notes & runtime artifacts
+.env
+RESUME_GUIDE.md
+runtime_data/
+logs/*.jsonl
+!logs/.gitkeep
+
+# OS files
+.DS_Store
+Thumbs.db

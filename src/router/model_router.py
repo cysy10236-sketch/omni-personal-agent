@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from src.config import AgentSettings
 from src.memory.models import MemorySearchHit
-from src.perception.multimodal_parser import MultimodalObservation
+from src.perception.multimodal_parser import MultimodalObservation, MultimodalPerceptionEngine
 from src.router.tool_selector import estimate_tokens
 
 
@@ -209,7 +209,8 @@ class DynamicModelRouter:
         recalled_hits: list[MemorySearchHit] | None = None,
         observations: list[MultimodalObservation] | None = None,
         auditor_feedback: str | None = None,
-    ) -> tuple[list[dict[str, str]], int]:
+        include_native_images: bool = False,
+    ) -> tuple[list[dict[str, object]], int]:
         """Assemble chat messages while keeping the system prompt 100% static for Prefix KV-Cache reuse.
 
         Returns `(messages, cached_prefix_tokens)`.
@@ -254,9 +255,19 @@ class DynamicModelRouter:
         envelope_parts.append("</context_envelope>")
         user_turn_content = "\n".join(envelope_parts) + f"\n\n<user_request>\n{user_query}\n</user_request>"
 
-        messages = [
+        image_obs = [o for o in (observations or []) if o.modality == "image"]
+        if include_native_images and image_obs:
+            content_blocks: list[dict[str, object]] = [{"type": "text", "text": user_turn_content}]
+            for img_o in image_obs:
+                b64_uri = MultimodalPerceptionEngine.encode_image_base64(img_o.source_path)
+                content_blocks.append({"type": "image_url", "image_url": {"url": b64_uri}})
+            user_message: dict[str, object] = {"role": "user", "content": content_blocks}
+        else:
+            user_message = {"role": "user", "content": user_turn_content}
+
+        messages: list[dict[str, object]] = [
             {"role": "system", "content": IMMUTABLE_SYSTEM_PROMPT},
-            {"role": "user", "content": user_turn_content},
+            user_message,
         ]
         return messages, cached_prefix_tokens
 

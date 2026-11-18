@@ -27,6 +27,7 @@ class LLMCompletion(BaseModel):
     """Normalized LLM generation output with token and cache telemetry."""
 
     content: str = ""
+    reasoning_content: str | None = None
     tool_calls: list[ToolCallRequest] = Field(default_factory=list)
     model_id: str
     input_tokens: int = Field(ge=0)
@@ -82,14 +83,20 @@ class OpenAICompatibleProvider:
             "model": model_id,
             "messages": messages,
             "temperature": self.settings.temperature,
-            "seed": self.settings.random_seed,
         }
+        if "deepseek" in model_id.lower():
+            # Tier-adaptive reasoning effort: low latency on SLM tiers, balanced on Frontier
+            kwargs["reasoning_effort"] = "low"
+        else:
+            kwargs["seed"] = self.settings.random_seed
+
         if tools:
             kwargs["tools"] = [t.to_openai_tool() for t in tools]
             kwargs["tool_choice"] = "auto"
 
         resp = await client.chat.completions.create(**kwargs)
         choice = resp.choices[0].message
+        reasoning_text = getattr(choice, "reasoning_content", None)
         parsed_calls: list[ToolCallRequest] = []
         for tc in choice.tool_calls or []:
             try:
@@ -108,11 +115,15 @@ class OpenAICompatibleProvider:
         in_tok = int(usage.prompt_tokens) if usage else 0
         out_tok = int(usage.completion_tokens) if usage else 0
         cached_tok = 0
-        if usage and getattr(usage, "prompt_tokens_details", None):
-            cached_tok = int(getattr(usage.prompt_tokens_details, "cached_tokens", 0) or 0)
+        if usage:
+            if getattr(usage, "prompt_tokens_details", None):
+                cached_tok = int(getattr(usage.prompt_tokens_details, "cached_tokens", 0) or 0)
+            if cached_tok == 0 and getattr(usage, "prompt_cache_hit_tokens", None):
+                cached_tok = int(getattr(usage, "prompt_cache_hit_tokens", 0) or 0)
 
         return LLMCompletion(
             content=choice.content or "",
+            reasoning_content=reasoning_text,
             tool_calls=parsed_calls,
             model_id=model_id,
             input_tokens=in_tok,

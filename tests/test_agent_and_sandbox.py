@@ -25,6 +25,7 @@ async def test_sandbox_blocks_destructive_cmd_and_halts_opaque_wrapper_until_app
     tmp_path: Path,
 ) -> None:
     settings = AgentSettings(
+        OPENAI_API_KEY="",
         MEMORY_DB_PATH=tmp_path / "m.db",
         SANDBOX_WORKSPACE_DIR=tmp_path / "ws",
         TRACE_LOG_PATH=tmp_path / "trace.jsonl",
@@ -56,6 +57,7 @@ async def test_sandbox_blocks_destructive_cmd_and_halts_opaque_wrapper_until_app
 @pytest.mark.asyncio
 async def test_transient_tool_error_self_healing_and_tainted_pdf_defense(tmp_path: Path) -> None:
     settings = AgentSettings(
+        OPENAI_API_KEY="",
         MEMORY_DB_PATH=tmp_path / "m2.db",
         SANDBOX_WORKSPACE_DIR=tmp_path / "ws2",
         TRACE_LOG_PATH=tmp_path / "trace2.jsonl",
@@ -89,6 +91,7 @@ async def test_transient_tool_error_self_healing_and_tainted_pdf_defense(tmp_pat
 
 def test_fastapi_endpoints_end_to_end(tmp_path: Path) -> None:
     settings = AgentSettings(
+        OPENAI_API_KEY="",
         MEMORY_DB_PATH=tmp_path / "api.db",
         SANDBOX_WORKSPACE_DIR=tmp_path / "api_ws",
         TRACE_LOG_PATH=tmp_path / "api_trace.jsonl",

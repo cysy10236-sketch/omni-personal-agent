@@ -68,6 +68,7 @@ def test_multilingual_tool_selector_cjk_and_mcp_pair_preservation(tmp_path: Path
 
 def test_dynamic_model_router_privacy_complexity_and_kv_cache_invariance(tmp_path: Path) -> None:
     settings = AgentSettings(
+        OPENAI_API_KEY="",
         MEMORY_DB_PATH=tmp_path / "m.db",
         SANDBOX_WORKSPACE_DIR=tmp_path / "ws",
         TRACE_LOG_PATH=tmp_path / "t.jsonl",

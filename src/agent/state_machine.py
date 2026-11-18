@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from enum import Enum
+import json
 from pathlib import Path
 import time
 from typing import Any
@@ -177,12 +178,13 @@ class OmniPersonalAgent:
                 recalled_hits=mem_resp.hits,
                 observations=observations,
                 auditor_feedback=auditor_feedback,
+                include_native_images=(not self.settings.use_mock_llm),
             )
 
             round_tool_records: list[tuple[str, dict[str, Any], bool, str]] = []
 
             # Bounded inner tool execution loop
-            for _step in range(5):
+            for _step in range(8):
                 with self.tracer.span(trace_id, "llm", "plan_or_respond") as sp:
                     completion = await self.llm.complete(
                         messages,
@@ -203,20 +205,24 @@ class OmniPersonalAgent:
                     final_answer = completion.content
                     break
 
-                messages.append(
-                    {
-                        "role": "assistant",
-                        "content": completion.content or "",
-                        "tool_calls": [
-                            {
-                                "id": tc.call_id,
-                                "type": "function",
-                                "function": {"name": tc.tool_name, "arguments": str(tc.arguments)},
-                            }
-                            for tc in completion.tool_calls
-                        ],
-                    }
-                )
+                assistant_msg: dict[str, Any] = {
+                    "role": "assistant",
+                    "content": completion.content or "",
+                    "tool_calls": [
+                        {
+                            "id": tc.call_id,
+                            "type": "function",
+                            "function": {
+                                "name": tc.tool_name,
+                                "arguments": json.dumps(tc.arguments, ensure_ascii=False),
+                            },
+                        }
+                        for tc in completion.tool_calls
+                    ],
+                }
+                if completion.reasoning_content is not None:
+                    assistant_msg["reasoning_content"] = completion.reasoning_content
+                messages.append(assistant_msg)
 
                 for tc in completion.tool_calls:
                     transitions.append(AgentState.SANDBOX_CHECK)
@@ -258,7 +264,6 @@ class OmniPersonalAgent:
                                     "role": "tool",
                                     "tool_call_id": tc.call_id,
                                     "name": tc.tool_name,
-                                    "ok": True,
                                     "content": (
                                         f'{{"blocked_by_sandbox": "{sbx_res.rule_id}", '
                                         f'"note": "Untrusted injection ignored; proceed with safe summary only."}}'
@@ -308,7 +313,6 @@ class OmniPersonalAgent:
                             "role": "tool",
                             "tool_call_id": tc.call_id,
                             "name": tc.tool_name,
-                            "ok": exec_res.ok,
                             "content": exec_res.output,
                         }
                     )
@@ -457,7 +461,7 @@ class MonolithicReActBaseline:
         executed: list[ToolExecutionResult] = []
         final_answer = ""
 
-        for _step in range(5):
+        for _step in range(8):
             comp = await self.llm.complete(
                 messages,
                 model_id=self.settings.llm_model,
@@ -472,7 +476,24 @@ class MonolithicReActBaseline:
                 final_answer = comp.content
                 break
 
-            messages.append({"role": "assistant", "content": comp.content or ""})
+            base_assistant_msg: dict[str, Any] = {
+                "role": "assistant",
+                "content": comp.content or "",
+                "tool_calls": [
+                    {
+                        "id": tc.call_id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.tool_name,
+                            "arguments": json.dumps(tc.arguments, ensure_ascii=False),
+                        },
+                    }
+                    for tc in comp.tool_calls
+                ],
+            }
+            if comp.reasoning_content is not None:
+                base_assistant_msg["reasoning_content"] = comp.reasoning_content
+            messages.append(base_assistant_msg)
             aborted = False
             for tc in comp.tool_calls:
                 res = self.tools.execute(tc.tool_name, tc.arguments)
@@ -482,7 +503,6 @@ class MonolithicReActBaseline:
                         "role": "tool",
                         "tool_call_id": tc.call_id,
                         "name": tc.tool_name,
-                        "ok": res.ok,
                         "content": res.output,
                     }
                 )
